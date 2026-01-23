@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Red Jumper</title>
+    <style>
+        body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #222; overflow: hidden; touch-action: manipulation; font-family: Arial, sans-serif; }
+        canvas { max-width: 100%; max-height: 100%; aspect-ratio: 2 / 1; background-color: lightskyblue; border: 2px solid #000; }
+        #editOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #222; flex-direction: column; justify-content: center; align-items: center; z-index: 10; }
+        input { padding: 15px; font-size: 20px; width: 400px; text-align: center; border-radius: 8px; border: none; margin-bottom: 20px; }
+        button { padding: 15px 40px; font-size: 20px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 8px; }
+        button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <div id="editOverlay">
+        <input type="text" id="meterInput" placeholder="Enter distance (Max 64-bit)...">
+        <button id="setButton">Set Meter & Restart</button>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const overlay = document.getElementById("editOverlay");
+        const meterInput = document.getElementById("meterInput");
+        const setButton = document.getElementById("setButton");
+        const MAX_64_BIT = BigInt("18446744073709551615");
+        let dist = BigInt(0);
+        let active = true;
+        let lastTime = Date.now();
+        let godMode = false;
+        let inputBuffer = "";
+        const groundY = 300; 
+        const playerRadius = 40;
+        const player = { x: 200, y: groundY - playerRadius, radius: playerRadius, v: 0 };
+        const spike = { x: 800, y: groundY, width: 60, height: 80 };
+        const clouds = [{x: 150, y: 100}, {x: 500, y: 70}, {x: 700, y: 120}];
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "limegreen";
+            ctx.fillRect(0, groundY, 800, 100);
+            ctx.fillStyle = "white";
+            clouds.forEach(c => {
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, 20, 0, Math.PI * 2);
+                ctx.arc(c.x + 25, c.y, 25, 0, Math.PI * 2);
+                ctx.arc(c.x + 50, c.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            if (godMode) {
+                ctx.strokeStyle = "gold";
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius + 5, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.beginPath();
+            ctx.moveTo(spike.x, spike.y);
+            ctx.lineTo(spike.x - 30, spike.y - 80);
+            ctx.lineTo(spike.x - 60, spike.y);
+            ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.textAlign = "center";
+            if (active) {
+                ctx.font = "bold 18px Arial";
+                ctx.fillText(`distance: ${dist.toString()}m`, 150, 50);
+                if (godMode) {
+                    ctx.fillStyle = "gold";
+                    ctx.fillText("GOD MODE ACTIVE", 150, 75);
+                }
+            } else {
+                ctx.font = "bold 42px Arial";
+                ctx.fillText("GAME OVER", 400, 160);
+                ctx.font = "24px Arial";
+                ctx.fillText(`distance: ${dist.toString()}m`, 400, 210);
+                ctx.font = "italic 18px Arial";
+                ctx.fillText("Tap anywhere to retry", 400, 260);
+            }
+        }
+        function update() {
+            if (active) {
+                let now = Date.now();
+                if (now - lastTime >= 100) {
+                    dist++;
+                    lastTime = now;
+                }
+                player.v -= 0.8;
+                player.y -= player.v;
+                if (player.y > groundY - playerRadius) {
+                    player.y = groundY - playerRadius;
+                    player.v = 0;
+                }
+                spike.x -= 10;
+                if (spike.x < -50) spike.x = 900;
+                let dx = player.x - (spike.x - 30);
+                let dy = player.y - (spike.y - 40);
+                if (Math.sqrt(dx*dx + dy*dy) < 60 && !godMode) active = false;
+            }
+            draw();
+            requestAnimationFrame(update);
+        }
+        function resetGame() {
+            active = true;
+            lastTime = Date.now();
+            spike.x = 800;
+            player.y = groundY - playerRadius;
+            player.v = 0;
+        }
+        function handleInput(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            if (overlay.style.display === "flex") return;
+            if (!active) {
+                dist = BigInt(0); 
+                resetGame();
+            } else if (player.y >= groundY - playerRadius - 1) {
+                player.v = 16;
+            }
+        }
+        setButton.addEventListener("click", () => {
+            try {
+                let cleanVal = meterInput.value.replace(/\D/g, '');
+                let val = BigInt(cleanVal || 0);
+                if (val > MAX_64_BIT) val = MAX_64_BIT;
+                if (val < 0n) val = 0n;
+                dist = val;
+                overlay.style.display = "none";
+                resetGame();
+            } catch (e) {
+                alert("Please enter a valid number");
+            }
+        });
+        window.addEventListener("keydown", (e) => { 
+            if (e.code === "Space") {
+                handleInput();
+            }
+            inputBuffer += e.key.toLowerCase();
+            inputBuffer = inputBuffer.slice(-9);
+            if (inputBuffer.endsWith("god")) {
+                godMode = !godMode;
+            }
+            if (inputBuffer === "meteredit") {
+                overlay.style.display = "flex";
+                meterInput.focus();
+                inputBuffer = "";
+            }
+        });
+        canvas.addEventListener("touchstart", handleInput);
+        canvas.addEventListener("mousedown", handleInput);
+        update();
+    </script>
+</body>
+</html>
